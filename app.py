@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import tensorflow as tf
 import numpy as np
@@ -6,30 +6,20 @@ from PIL import Image
 import os
 
 app = Flask(__name__)
+CORS(app)
 
-# Keep CORS enabled, although the website will now be served
-# from this same Flask application.
-CORS(app, resources={r"/*": {"origins": "*"}})
+print("🌱 Loading AI Plant Doctor model...")
 
 MODEL_PATH = "plant_disease_model_fixed.keras"
-
-print("======================================")
-print("🌱 AI PLANT DOCTOR")
-print("======================================")
-print("Loading AI Plant Doctor model...")
-
 model = tf.keras.models.load_model(MODEL_PATH)
 
-print("AI model loaded successfully!")
+print("✅ AI model loaded successfully!")
 
-# Warm up TensorFlow so the first real user prediction
-# does not pay the model/tracing startup cost.
-print("Warming up AI model...")
+# Warm up TensorFlow so the first real prediction is not slow
+dummy = np.zeros((1, 224, 224, 3), dtype=np.float32)
+model.predict(dummy, verbose=0)
 
-dummy_image = np.zeros((1, 224, 224, 3), dtype=np.float32)
-model.predict(dummy_image, verbose=0)
-
-print("AI model warmed up successfully!")
+print("✅ AI model warmed up successfully!")
 
 class_names = [
     "Apple___Apple_scab",
@@ -73,146 +63,53 @@ class_names = [
 ]
 
 
-def get_recommendation(disease):
-    if "healthy" in disease.lower():
-        return (
-            "The plant appears healthy. "
-            "Continue regular watering, proper nutrition, "
-            "and monitor the plant regularly."
-        )
-
-    return (
-        "The plant may be affected by this disease. "
-        "Remove severely affected leaves, maintain good air circulation, "
-        "avoid excessive moisture on leaves, and consider an appropriate "
-        "plant disease treatment."
-    )
-
-
 def get_severity(disease):
     if "healthy" in disease.lower():
         return "Healthy ✅"
-
     return "Needs Attention ⚠️"
 
 
-def format_disease(name):
-    if not name:
-        return "Unknown"
+def get_recommendation(disease):
+    if "healthy" in disease.lower():
+        return (
+            "The plant appears healthy. Continue regular watering, "
+            "proper nutrition, and monitor the plant regularly."
+        )
 
+    return (
+        "The plant may be affected by this disease. Remove severely "
+        "affected leaves, maintain good air circulation, avoid excessive "
+        "moisture on leaves, and consider an appropriate plant disease treatment."
+    )
+
+
+def clean_name(name):
     return (
         name.replace("___", " — ")
             .replace("_", " ")
-            .replace("(", " (")
-            .replace("  ", " ")
             .strip()
     )
 
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
-    return HTML_PAGE
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "online",
-        "model": "loaded",
-        "classes": len(class_names)
-    })
-
-
-@app.route("/predict", methods=["POST"])
-def predict():
-
-    print("Received prediction request")
-
-    try:
-
-        if "image" not in request.files:
-            print("ERROR: No image uploaded")
-            return jsonify({
-                "error": "No image uploaded"
-            }), 400
-
-        file = request.files["image"]
-
-        image = Image.open(file).convert("RGB")
-        image = image.resize((224, 224))
-
-        image_array = np.array(image).astype("float32")
-        image_array = np.expand_dims(image_array, axis=0)
-
-        print("Running AI prediction...")
-
-        predictions = model.predict(
-            image_array,
-            verbose=0
-        )
-
-        predicted_index = int(
-            np.argmax(predictions[0])
-        )
-
-        confidence = (
-            float(predictions[0][predicted_index]) * 100
-        )
-
-        disease = class_names[predicted_index]
-
-        print(
-            "Prediction:",
-            disease,
-            f"{confidence:.2f}%"
-        )
-
-        return jsonify({
-            "disease": disease,
-            "confidence": f"{confidence:.2f}%",
-            "severity": get_severity(disease),
-            "recommendation": get_recommendation(disease)
-        })
-
-    except Exception as e:
-
-        print("PREDICTION ERROR:", str(e))
-
-        return jsonify({
-            "error": str(e)
-        }), 500
-
-
-HTML_PAGE = """
+    return """
 <!DOCTYPE html>
-<html lang="en">
-
+<html>
 <head>
-
-<meta charset="UTF-8">
-
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Plant Doctor 🌿</title>
 
 <style>
-
 * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
     font-family: Arial, sans-serif;
 }
 
 body {
+    margin: 0;
     min-height: 100vh;
-    background: linear-gradient(
-        135deg,
-        #0b3d2e,
-        #145a32,
-        #1e8449
-    );
+    background: linear-gradient(135deg, #0b3d2e, #145a32, #1e8449);
     color: white;
     display: flex;
     justify-content: center;
@@ -222,303 +119,166 @@ body {
 
 .container {
     width: 100%;
-    max-width: 850px;
+    max-width: 800px;
     background: rgba(255,255,255,0.10);
-    backdrop-filter: blur(18px);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 28px;
+    backdrop-filter: blur(15px);
+    border-radius: 25px;
     padding: 35px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.35);
 }
 
-.header {
-    text-align: center;
-    margin-bottom: 30px;
-}
-
-.logo {
-    font-size: 55px;
-    margin-bottom: 8px;
-}
-
 h1 {
+    text-align: center;
     font-size: 38px;
     margin-bottom: 8px;
 }
 
 .subtitle {
+    text-align: center;
     color: #d5f5e3;
-    font-size: 16px;
+    margin-bottom: 30px;
 }
 
-.upload-box {
+.upload {
     border: 2px dashed rgba(255,255,255,0.5);
     border-radius: 20px;
     padding: 30px;
     text-align: center;
     cursor: pointer;
-    transition: 0.3s;
-    margin-bottom: 20px;
 }
 
-.upload-box:hover {
+.upload:hover {
     background: rgba(255,255,255,0.08);
-    border-color: white;
 }
 
-.upload-icon {
-    font-size: 45px;
-    margin-bottom: 10px;
-}
-
-.upload-box p {
-    margin: 8px;
-    color: #e8f8f5;
-}
-
-input[type="file"] {
+input {
     display: none;
 }
 
-.preview {
+#preview {
     display: none;
     text-align: center;
-    margin: 20px 0;
+    margin: 20px;
 }
 
-.preview img {
+#preview img {
     max-width: 300px;
     max-height: 300px;
     border-radius: 18px;
-    border: 3px solid rgba(255,255,255,0.5);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 
-.button {
+button {
     width: 100%;
-    border: none;
     padding: 16px;
+    border: none;
     border-radius: 14px;
     background: white;
     color: #145a32;
     font-size: 18px;
     font-weight: bold;
     cursor: pointer;
+    margin-top: 15px;
 }
 
-.button:disabled {
+button:disabled {
     opacity: 0.6;
-    cursor: not-allowed;
 }
 
-.loading {
+#loading {
     display: none;
     text-align: center;
-    margin: 25px 0;
+    margin: 25px;
 }
 
-.spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid rgba(255,255,255,0.3);
-    border-top: 4px solid white;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: auto auto 12px;
-}
-
-@keyframes spin {
-    100% {
-        transform: rotate(360deg);
-    }
-}
-
-.result {
+#result {
     display: none;
-    margin-top: 28px;
-    background: rgba(255,255,255,0.12);
-    border-radius: 20px;
-    padding: 25px;
+    margin-top: 25px;
 }
 
-.result-title {
-    text-align: center;
-    font-size: 24px;
-    margin-bottom: 20px;
-}
-
-.result-card {
-    background: rgba(0,0,0,0.15);
-    border-radius: 15px;
+.card {
+    background: rgba(0,0,0,0.18);
     padding: 18px;
-    margin-bottom: 12px;
+    border-radius: 15px;
+    margin: 12px 0;
 }
 
 .label {
     font-size: 13px;
     color: #b8e6c9;
-    margin-bottom: 6px;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    margin-bottom: 6px;
 }
 
 .value {
-    font-size: 21px;
+    font-size: 20px;
     font-weight: bold;
+    line-height: 1.5;
 }
 
-.recommendation {
-    line-height: 1.6;
-    font-size: 16px;
-}
-
-.error {
+#error {
     display: none;
-    margin-top: 20px;
+    background: rgba(192,57,43,0.4);
     padding: 15px;
     border-radius: 12px;
-    background: rgba(192,57,43,0.35);
+    margin-top: 20px;
     text-align: center;
 }
-
-.footer {
-    text-align: center;
-    margin-top: 25px;
-    color: #c8e6d5;
-    font-size: 13px;
-}
-
 </style>
-
 </head>
 
 <body>
 
 <div class="container">
 
-<div class="header">
-
-<div class="logo">🌿🩺</div>
-
-<h1>AI Plant Doctor</h1>
+<h1>🌿🩺 AI Plant Doctor</h1>
 
 <p class="subtitle">
 AI-powered plant disease detection using deep learning
 </p>
 
-</div>
-
-<label class="upload-box" for="imageInput">
-
-<div class="upload-icon">📷</div>
-
-<h3>Upload a Plant Leaf</h3>
-
-<p>Click here to choose an image</p>
-
-<p>Supports JPG, JPEG and PNG</p>
-
+<label class="upload" for="image">
+    <h2>📷 Upload a Plant Leaf</h2>
+    <p>Click here to choose an image</p>
+    <p>JPG, JPEG and PNG supported</p>
 </label>
 
-<input
-    type="file"
-    id="imageInput"
-    accept="image/*"
->
+<input type="file" id="image" accept="image/*">
 
-<div class="preview" id="preview">
-
-<img
-    id="previewImage"
-    alt="Plant preview"
->
-
+<div id="preview">
+    <img id="previewImage">
 </div>
 
-<button
-    class="button"
-    id="predictButton"
-    disabled
->
-
-🔍 Analyze Plant
-
+<button id="analyze" disabled>
+    🔍 Analyze Plant
 </button>
 
-<div class="loading" id="loading">
-
-<div class="spinner"></div>
-
-<p>AI is analyzing your plant...</p>
-
+<div id="loading">
+    🌱 AI is analyzing your plant...
 </div>
 
-<div class="error" id="error"></div>
+<div id="error"></div>
 
-<div class="result" id="result">
+<div id="result">
 
-<div class="result-title">
-🌱 Diagnosis Result
-</div>
+    <div class="card">
+        <div class="label">Detected Disease</div>
+        <div class="value" id="disease">-</div>
+    </div>
 
-<div class="result-card">
+    <div class="card">
+        <div class="label">Confidence</div>
+        <div class="value" id="confidence">-</div>
+    </div>
 
-<div class="label">
-Detected Disease
-</div>
+    <div class="card">
+        <div class="label">Severity</div>
+        <div class="value" id="severity">-</div>
+    </div>
 
-<div class="value" id="disease">
--
-</div>
-
-</div>
-
-<div class="result-card">
-
-<div class="label">
-Confidence
-</div>
-
-<div class="value" id="confidence">
--
-</div>
-
-</div>
-
-<div class="result-card">
-
-<div class="label">
-Severity
-</div>
-
-<div class="value" id="severity">
--
-</div>
-
-</div>
-
-<div class="result-card">
-
-<div class="label">
-Recommendation
-</div>
-
-<div class="value recommendation"
-     id="recommendation">
--
-</div>
-
-</div>
-
-</div>
-
-<div class="footer">
-
-Powered by MobileNetV2 • TensorFlow • Flask • AI/ML
-
-<br><br>
-
-🌿 AI Plant Doctor — 38 Plant Disease Classes
+    <div class="card">
+        <div class="label">Recommendation</div>
+        <div class="value" id="recommendation">-</div>
+    </div>
 
 </div>
 
@@ -526,208 +286,161 @@ Powered by MobileNetV2 • TensorFlow • Flask • AI/ML
 
 <script>
 
-const imageInput =
-document.getElementById("imageInput");
-
-const preview =
-document.getElementById("preview");
-
-const previewImage =
-document.getElementById("previewImage");
-
-const predictButton =
-document.getElementById("predictButton");
-
-const loading =
-document.getElementById("loading");
-
-const result =
-document.getElementById("result");
-
-const errorBox =
-document.getElementById("error");
-
 let selectedFile = null;
 
+const imageInput = document.getElementById("image");
+const preview = document.getElementById("preview");
+const previewImage = document.getElementById("previewImage");
+const analyze = document.getElementById("analyze");
+const loading = document.getElementById("loading");
+const result = document.getElementById("result");
+const errorBox = document.getElementById("error");
 
-imageInput.addEventListener(
-"change",
-function () {
+imageInput.addEventListener("change", function() {
 
-selectedFile = this.files[0];
+    selectedFile = this.files[0];
 
-if (!selectedFile) {
+    if (!selectedFile) {
+        analyze.disabled = true;
+        preview.style.display = "none";
+        return;
+    }
 
-predictButton.disabled = true;
-preview.style.display = "none";
-
-return;
-
-}
-
-const reader = new FileReader();
-
-reader.onload = function(event) {
-
-previewImage.src =
-event.target.result;
-
-preview.style.display =
-"block";
-
-predictButton.disabled =
-false;
-
-result.style.display =
-"none";
-
-errorBox.style.display =
-"none";
-
-};
-
-reader.readAsDataURL(
-selectedFile
-);
-
+    previewImage.src = URL.createObjectURL(selectedFile);
+    preview.style.display = "block";
+    analyze.disabled = false;
+    result.style.display = "none";
+    errorBox.style.display = "none";
 });
 
 
-predictButton.addEventListener(
-"click",
-async function () {
+analyze.addEventListener("click", async function() {
 
-if (!selectedFile) {
-return;
-}
+    if (!selectedFile) return;
 
-predictButton.disabled =
-true;
+    analyze.disabled = true;
+    loading.style.display = "block";
+    result.style.display = "none";
+    errorBox.style.display = "none";
 
-loading.style.display =
-"block";
+    const formData = new FormData();
+    formData.append("image", selectedFile);
 
-result.style.display =
-"none";
+    try {
 
-errorBox.style.display =
-"none";
+        const response = await fetch("/predict", {
+            method: "POST",
+            body: formData
+        });
 
+        const data = await response.json();
 
-const formData =
-new FormData();
+        if (!response.ok) {
+            throw new Error(data.error || "Prediction failed");
+        }
 
-formData.append(
-"image",
-selectedFile
-);
+        document.getElementById("disease").textContent =
+            data.disease;
 
+        document.getElementById("confidence").textContent =
+            data.confidence;
 
-try {
+        document.getElementById("severity").textContent =
+            data.severity;
 
-const response =
-await fetch(
-"/predict",
-{
-method: "POST",
-body: formData
-}
-);
+        document.getElementById("recommendation").textContent =
+            data.recommendation;
 
+        result.style.display = "block";
 
-const data =
-await response.json()
-.catch(() => ({}));
+    } catch (error) {
 
+        console.error(error);
 
-if (!response.ok) {
+        errorBox.textContent =
+            "❌ " + error.message;
 
-throw new Error(
-data.error ||
-"Server error: " +
-response.status
-);
+        errorBox.style.display = "block";
 
-}
+    } finally {
 
+        loading.style.display = "none";
+        analyze.disabled = false;
 
-document.getElementById(
-"disease"
-).textContent =
-formatDisease(
-data.disease
-);
-
-
-document.getElementById(
-"confidence"
-).textContent =
-data.confidence;
-
-
-document.getElementById(
-"severity"
-).textContent =
-data.severity;
-
-
-document.getElementById(
-"recommendation"
-).textContent =
-data.recommendation;
-
-
-result.style.display =
-"block";
-
-}
-
-catch(error) {
-
-console.error(error);
-
-errorBox.textContent =
-"❌ " + error.message;
-
-errorBox.style.display =
-"block";
-
-}
-
-finally {
-
-loading.style.display =
-"none";
-
-predictButton.disabled =
-false;
-
-}
+    }
 
 });
-
-
-function formatDisease(name) {
-
-if (!name) {
-return "Unknown";
-}
-
-return name
-.replaceAll("___", " — ")
-.replaceAll("_", " ")
-.replaceAll("(", " (")
-.replaceAll("  ", " ")
-.trim();
-
-}
 
 </script>
 
 </body>
-
 </html>
 """
+
+
+@app.route("/predict", methods=["POST"])
+def predict():
+
+    print("📷 Prediction request received")
+
+    try:
+
+        if "image" not in request.files:
+            return jsonify({
+                "error": "No image uploaded"
+            }), 400
+
+        file = request.files["image"]
+
+        image = Image.open(file).convert("RGB")
+        image = image.resize((224, 224))
+
+        image_array = np.asarray(
+            image,
+            dtype=np.float32
+        )
+
+        image_array = np.expand_dims(
+            image_array,
+            axis=0
+        )
+
+        print("🧠 Running prediction...")
+
+        predictions = model.predict(
+            image_array,
+            verbose=0
+        )
+
+        index = int(
+            np.argmax(predictions[0])
+        )
+
+        confidence = (
+            float(predictions[0][index]) * 100
+        )
+
+        disease = class_names[index]
+
+        print(
+            f"✅ Prediction: {disease} "
+            f"({confidence:.2f}%)"
+        )
+
+        return jsonify({
+            "disease": clean_name(disease),
+            "confidence": f"{confidence:.2f}%",
+            "severity": get_severity(disease),
+            "recommendation": get_recommendation(disease)
+        })
+
+    except Exception as e:
+
+        print("❌ PREDICTION ERROR:", repr(e))
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 if __name__ == "__main__":
