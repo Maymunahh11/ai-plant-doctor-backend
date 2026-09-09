@@ -6,7 +6,7 @@ from PIL import Image
 import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ==============================
 # LOAD AI MODEL
